@@ -1,0 +1,227 @@
+# import dataset training dan drop id
+import pandas as pd
+import numpy as np
+
+df = pd.read_csv('Pendapatan.csv')
+df = df.drop('id', axis=1)
+df.head()
+
+# memisahkan data feature dan data target
+x = df.drop('Gaji', axis=1)
+y = df['Gaji']
+
+# buat cek kolom
+x.columns
+
+# buat cek head aja
+x.head()
+
+# proses label encoder
+from sklearn.preprocessing import LabelEncoder
+
+le_kelas_pekerja = LabelEncoder()
+le_pendidikan = LabelEncoder()
+le_status_perkawinan = LabelEncoder()
+le_pekerjaan = LabelEncoder()
+le_jenis_kelamin = LabelEncoder()
+
+# ini proses untuk nambahin kolom yang yg valuenya berupa encoding ke tabel 
+x['kelas_pekerja'] = le_kelas_pekerja.fit_transform(x['Kelas Pekerja'])
+x['pendidikan'] = le_pendidikan.fit_transform(x['Pendidikan'])
+x['jumlah_tahun_pendidikan'] = le_pendidikan.fit_transform(x['Jmlh Tahun Pendidikan'])
+x['status_perkawinan'] = le_status_perkawinan.fit_transform(x['Status Perkawinan'])
+x['pekerjaan'] = le_pekerjaan.fit_transform(x['Pekerjaan'])
+x['jenis_kelamin'] = le_jenis_kelamin.fit_transform(x['Jenis Kelamin'])
+x.head()
+
+# yg tdi msih dobel kan kolomnya (kolom yg berupa string masih ada di dalam tabel)
+# di cell ini saya drop kolom yang lama (kolom berupa string)
+# outputnya adalah tabel baru yang isinya berupa encoding 
+# googling mengenai label encoder agar anda lebih mengerti maksud dri method ini
+x = x.drop(['Kelas Pekerja', 'Jmlh Tahun Pendidikan','Status Perkawinan',
+                        'Pekerjaan','Jenis Kelamin','Pendidikan'], axis=1)
+x.head()
+
+# proses merubah angka yg float agar menjadi int
+x['Jam per Minggu']=x['Jam per Minggu'].astype(int)
+x['Berat Akhir']=x['Berat Akhir'].astype(int)
+x['Keuntungan Kapital']=x['Keuntungan Kapital'].astype(int)
+x['Kerugian Capital']=x['Kerugian Capital'].astype(int)
+
+x.head()
+
+y.head()
+
+# proses standarization
+from sklearn.preprocessing import StandardScaler
+
+# membuat variabel untuk library standardscaler dan fit transform ke data feature(x)
+# hasil scallar masih berupa array
+scallar = StandardScaler()
+dfscale = scallar.fit_transform(x)
+dfscale
+
+# memasukkan kolom data x pada variabel cols
+cols = x.columns
+
+# karena hasil scallar masih berupa array, maka dri itu perlu method untuk mengembalikannya ke dalam bentuk data frame
+dfscale = pd.DataFrame(dfscale, columns=cols)
+
+# data yang diberi standarisasi sudah dalam bentuk dataframe
+dfscale.head()
+
+# description dari data yang sudah di standarisasi
+dfscale.describe()
+
+# memisalkan kembali df scale ke dalam variabel x
+x = dfscale
+
+# cek data feature
+x.head()
+
+# cek data target
+y.head()
+
+# proses splitting dari dataset x dan y (data training)
+from sklearn.model_selection import train_test_split
+
+X_train, X_test, y_train, y_test = train_test_split(x, y, test_size=0.2,random_state=20,stratify=y)
+
+# proses rscv/gscv
+# perlu diketahui lama proses tergantung dri paramater yang anda berikan dan library mana yg anda gunakan (rscv/gscv)
+# tentu saja gscv akan memakan waktu yg lebih lama dibanding rscv
+# saya sarankan gunakan dahulu rscv, lalu lihat dari best parameternya
+# persempit parameter dengan membandingkan hasil dari best parameter tsb, lalu silahkan anda ulangi proses ini dengan gscv
+# sejauh ini, penggunaan gscv tidak memberikan hasil yang signifikan untuk saya
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
+
+rf = RandomForestClassifier()
+
+parameter = {'criterion':['entropy','gini'], 'max_depth':np.arange(1,20), 'max_features':['auto','sqrt','log2'],
+            'bootstrap':['False','True'], 'class_weight':['balanced','balanced_subsample']}
+
+rscv = RandomizedSearchCV(rf, parameter,cv=10, scoring='roc_auc', n_iter=20, random_state=20)
+rscv.fit(X_train, y_train)
+
+
+# method best_estimator_ hampir sama seperti method best_params_ namun info yg diberikan lebih lengkap
+rscv.best_estimator_
+
+# melihat parameter terbaik dari rscv
+# patokan untuk memperkecil parameter jika ingin menggunakan gscv
+rscv.best_params_
+
+# hasil skor rata" dari skor si rscv thdp data training
+rscv.best_score_
+
+# menggunakan predict_proba untuk melihat probabilitas dari x_test
+# hasil masih berupa array
+y_pred = rscv.predict_proba(X_test)[:,1]
+y_pred
+
+# cross val score untuk melihat baik/tidaknya model kita
+# roc_auc_score biar tambah yakin aja sih sbenernya
+from sklearn.model_selection import cross_val_score
+from sklearn.metrics import roc_auc_score
+
+# skor roc_auc thdp y test dan y pred
+roc_auc_score(y_test,y_pred)
+
+# memisalkan result dari cross val pada suatu variabel
+cv_result = cross_val_score(rf, x, y, cv=10, scoring='roc_auc')
+
+# krn hasil cv_result berupa array, maka akan lebih memudahkan jika kita menggunakan method .mean() untuk melihat skornya
+# bandingkan ketiga skor di atas, jika semua skor tinggi dan tidak jauh berbeda, maka anda bisa lanjut ke step berikutnya
+# biasanya skor kaggle tidak terlalu jauh dari skor yg dihasilkan ketiga method tsb
+cv_result.mean()
+
+# import blind test
+test = pd.read_csv('Pendapatan_test.csv')
+df2 = test.drop('id', axis=1)
+df2.head()
+
+# untuk cek berapa value '?' yg ada pada blind test tsb
+df2['Kelas Pekerja'].value_counts()
+
+df2['Pekerjaan'].value_counts()
+
+# ubah '?' ke nan dengan cara ini
+df2['Kelas Pekerja'] = df2['Kelas Pekerja'].replace(to_replace = '?', value = np.nan)
+
+# isi nan dengan method ini
+# tidak harus ffill, bisa bfill, atau modus
+df2['Kelas Pekerja'] = df2['Kelas Pekerja'].fillna(method='ffill')
+
+df2['Pekerjaan'] = df2['Pekerjaan'].replace(to_replace = '?', value = np.nan)
+
+df2['Pekerjaan'] = df2['Pekerjaan'].fillna(method='ffill')
+
+# untuk melihat jumlah value yg baru 
+df2['Kelas Pekerja'].value_counts()
+
+df2['Pekerjaan'].value_counts()
+
+# memastikan nan sudah tidak ada pada kolom tsb
+# jika true berarti masih ada nan, jika false berarti sebaliknya
+set(df2['Pekerjaan'].isna())
+
+set(df2['Pekerjaan'].isna())
+
+# cek head data dri blind test
+df2.head()
+
+# proses label encoder
+# perlu diketahui bahwa kita perlu memberikan perlakuan yang sama antara data training dan data test
+# kecuali untuk method remove outlier, remove outlier hanya perlu dilakukan pada data training saja
+# saya tidak melakukan method remove outlier karena tidak memberikan perbedaan skor yang signifikan
+le_kelas_pekerja2 = LabelEncoder()
+le_pendidikan2 = LabelEncoder()
+le_status_perkawinan2 = LabelEncoder()
+le_pekerjaan2 = LabelEncoder()
+le_jenis_kelamin2 = LabelEncoder()
+
+df2['kelas_pekerja'] = le_kelas_pekerja2.fit_transform(df2['Kelas Pekerja'])
+df2['pendidikan'] = le_pendidikan2.fit_transform(df2['Pendidikan'])
+df2['jumlah_tahun_pendidikan'] = le_pendidikan2.fit_transform(df2['Jmlh Tahun Pendidikan'])
+df2['status_perkawinan'] = le_status_perkawinan2.fit_transform(df2['Status Perkawinan'])
+df2['pekerjaan'] = le_pekerjaan2.fit_transform(df2['Pekerjaan'])
+df2['jenis_kelamin'] = le_jenis_kelamin2.fit_transform(df2['Jenis Kelamin'])
+df2.head()
+
+
+df2_new = df2.drop(['Kelas Pekerja', 'Jmlh Tahun Pendidikan','Status Perkawinan',
+                        'Pekerjaan','Jenis Kelamin','Pendidikan'], axis=1)
+
+
+df2_new.head()
+
+df2_new['Jam per Minggu']=df2_new['Jam per Minggu'].astype(int)
+df2_new['Berat Akhir']=df2_new['Berat Akhir'].astype(int)
+df2_new['Keuntungan Kapital']=df2_new['Keuntungan Kapital'].astype(int)
+df2_new['Kerugian Capital']=df2_new['Kerugian Capital'].astype(int)
+
+df2_new.head()
+
+from sklearn.preprocessing import StandardScaler
+
+std = StandardScaler()
+dfscale = std.fit_transform(df2_new)
+
+cols = df2_new.columns
+
+dfscale2 = pd.DataFrame(dfscale, columns=cols)
+dfscale2.head()
+
+dfscale2.describe()
+
+# hasil prediksi yang akan di upload ke kaggle
+# saya melakukan indexing agar outputnya berupa array satu dimensi, tanpa indexing hasilnya adalah array dua dimensi
+# perlu diketahui bahwa hasil predik proba memang berupa array
+# saya menggunakan predict proba krn permintaan dari soal adalah prediksi probabilitas
+y_pred2 = rscv.predict_proba(df2_new)[:,1]
+y_pred2
+
+# cara save output ke dalam bentuk csv
+output = pd.DataFrame({'id':test.id, 'Gaji':y_pred2})
+output.to_csv('nama file.csv',index=False)
